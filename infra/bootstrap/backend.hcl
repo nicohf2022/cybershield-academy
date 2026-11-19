@@ -1,4 +1,4 @@
-# Used only after adding the S3 backend block during approved migration.
+# Bootstrap state destination; migrate existing local state with init -migrate-state.
 bucket       = "cybershield-tfstate-079754672968"
 key          = "bootstrap/terraform.tfstate"
 region       = "us-east-1"

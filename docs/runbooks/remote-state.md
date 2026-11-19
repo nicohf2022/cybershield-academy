@@ -84,8 +84,8 @@ has no S3 permissions; do not use it for backend initialization yet.
 
 ## 3. Move bootstrap state to S3 as a separate approved step
 
-Once adoption succeeds, securely back up the bootstrap state outside Git. Add
-`infra/bootstrap/backend.tf` containing:
+Once adoption succeeds, securely back up the bootstrap state outside Git. The
+prepared `infra/bootstrap/backend.tf` contains:
 
 ```hcl
 terraform {
@@ -128,3 +128,24 @@ exercise rather than claiming state is already disaster resilient.
 References:
 - [HashiCorp S3 backend and lock permissions](https://developer.hashicorp.com/terraform/language/backend/s3)
 - [S3 pricing](https://aws.amazon.com/s3/pricing/)
+
+## Controlled lock verification after bootstrap migration
+
+In terminal 1, from the repository root:
+
+```bash
+export AWS_PROFILE=cybershield
+terraform -chdir=infra/bootstrap console
+```
+
+Leave the console open at its prompt. It holds the state lock. In terminal 2:
+
+```bash
+export AWS_PROFILE=cybershield
+terraform -chdir=infra/bootstrap plan -lock-timeout=5s
+```
+
+Expect an error acquiring the state lock. Save that output as evidence, then
+type `exit` in terminal 1 so Terraform releases the lock normally. Rerun the
+plan in terminal 2; it must succeed and report no changes. Do not use
+`-lock=false`, force-unlock or manually delete the lock object.
