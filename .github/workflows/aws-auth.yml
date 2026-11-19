@@ -1,0 +1,24 @@
+name: AWS OIDC authentication
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  identity:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Obtain temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: cybershield-auth-${{ github.run_id }}
+          role-duration-seconds: 900
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
