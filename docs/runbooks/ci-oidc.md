@@ -89,7 +89,7 @@ local Terraform validation cannot exercise GitHub's token exchange.
 ## Trust boundary and troubleshooting
 
 The trust policy uses exact StringEquals conditions for audience sts.amazonaws.com
-and subject repo:nicohf2022/cybershield-academy:ref:refs/heads/main.
+and subject repo:nicohf2022@104432397/cybershield-academy@1458857174:ref:refs/heads/main.
 PR tokens, forks and other branches do not match. The main branch should be
 protected with reviews. Any workflow on main granted id-token permission can
 request this role; this is currently acceptable because it has no resource
@@ -99,7 +99,7 @@ If OIDC fails, check repository variables, role trust policy, the main branch,
 and id-token: write. If the repository uses a customized OIDC subject template,
 match the actual configured subject rather than broadening the trust wildcard.
 If a GitHub Environment is added later, its subject becomes
-repo:OWNER/REPO:environment:ENVIRONMENT; update the trust and environment
+repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:ENVIRONMENT; update the trust and environment
 protections together before testing it.
 
 References:
@@ -118,3 +118,18 @@ apply and manual destroy. Failover/failback remain later milestones.
 Existing regional tags use Project/Team/Environment/Owner rather than the
 required lowercase project/team/env/owner, and region validations currently fix
 the two provisional regions. Address these before infrastructure deployment.
+
+## Immutable subject diagnosis
+
+The repository API reports `use_immutable_subject: true`. Confirm its exact prefix:
+
+```bash
+gh api repos/nicohf2022/cybershield-academy/actions/oidc/customization/sub
+```
+
+Terraform uses `github_oidc_subject_prefix` from `sub_claim_prefix` and appends
+`:ref:refs/heads/main`. The former name-only trust policy rejected these tokens.
+Review a fresh Terraform plan, approve and apply the role trust update, then
+rerun the authentication workflow. No workflow or GitHub variable change is needed.
+
+See [GitHub immutable subject documentation](https://docs.github.com/en/actions/reference/security/oidc).
