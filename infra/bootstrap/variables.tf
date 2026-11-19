@@ -9,13 +9,13 @@ variable "aws_region" {
   }
 }
 
-variable "github_repository" {
-  description = "Exact GitHub owner/repository allowed to assume the identity-only role."
+variable "github_oidc_subject_prefix" {
+  description = "Exact repository OIDC sub_claim_prefix returned by GitHub, including immutable IDs."
   type        = string
-  default     = "nicohf2022/cybershield-academy"
+  default     = "repo:nicohf2022@104432397/cybershield-academy@1458857174"
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
-    error_message = "Use owner/repository without wildcards."
+    condition     = can(regex("^repo:[A-Za-z0-9_.-]+@[0-9]+/[A-Za-z0-9_.-]+@[0-9]+$", var.github_oidc_subject_prefix))
+    error_message = "Use repo:OWNER@OWNER_ID/REPO@REPO_ID without wildcards."
   }
 }
