@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CyberShield Academy</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: #e5e7eb;
+            background: #111827;
+        }
+
+        main {
+            width: min(900px, 90%);
+            margin: 48px auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            margin-top: 0;
+            color: #9ca3af;
+        }
+
+        table {
+            width: 100%;
+            margin-top: 32px;
+            border-collapse: collapse;
+            background: #1f2937;
+        }
+
+        th,
+        td {
+            padding: 14px;
+            text-align: left;
+            border-bottom: 1px solid #374151;
+        }
+
+        th {
+            color: #93c5fd;
+        }
+
+        .empty {
+            padding: 24px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>CyberShield Academy</h1>
+
+        <p class="subtitle">
+            Registros consultados directamente desde PostgreSQL.
+        </p>
+
+        {% if lessons %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tema</th>
+                    <th>Descripción</th>
+                    <th>Fecha</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for lesson in lessons %}
+                <tr>
+                    <td>{{ lesson["id"] }}</td>
+                    <td>{{ lesson["title"] }}</td>
+                    <td>{{ lesson["description"] }}</td>
+                    <td>{{ lesson["created_at"] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty">No hay registros disponibles.</p>
+        {% endif %}
+    </main>
+</body>
+</html>

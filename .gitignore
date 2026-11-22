@@ -19,6 +19,7 @@ override.tf.json
 # Credenciales y secretos
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials
