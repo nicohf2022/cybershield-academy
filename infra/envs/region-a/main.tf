@@ -61,11 +61,15 @@ module "compute" {
   root_volume_size            = var.root_volume_size
   enable_detailed_monitoring  = var.enable_detailed_monitoring
   user_data = templatefile("${path.module}/templates/user-data.sh.tftpl", {
+    backup_s3_prefix = "s3://${module.storage.bucket_name}/postgres"
     app_files = {
-      for filename in ["compose.yaml", "Dockerfile", "requirements.txt", "database/init.sql", "src/app.py", "src/templates/index.html"] :
-      filename => filebase64("${path.module}/../../../app/${filename}")
+      for filename in ["compose.yaml", "Dockerfile", "requirements.txt", "database/init.sql", "src/app.py", "src/templates/index.html", "scripts/database.py", "systemd/cybershield-backup.service", "systemd/cybershield-backup.timer"] :
+      filename => base64gzip(file("${path.module}/../../../app/${filename}"))
     }
   })
+
+  # First-boot backup needs bucket settings, IAM policies and Internet routing.
+  depends_on = [module.storage, module.iam, module.network]
 }
 
 module "monitoring" {

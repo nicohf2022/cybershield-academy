@@ -28,6 +28,9 @@ secrets.*
 .aws/
 
 # Python
+.backups/
+.database-*.lock
+*.dump
 __pycache__/
 *.pyc
 

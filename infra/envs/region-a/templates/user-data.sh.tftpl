@@ -3,7 +3,7 @@ set -euo pipefail
 # Never enable shell tracing: the database password is generated on this host.
 umask 077
 
-dnf install -y docker openssl
+dnf install -y docker openssl python3 awscli-2 gzip
 systemctl enable --now docker
 
 # Pinned Compose plugin, installed using Docker's documented manual method.
@@ -23,11 +23,13 @@ docker compose version
 install -d -m 0700 /opt/cybershield
 %{ for filename, contents in app_files ~}
 install -d -m 0700 "/opt/cybershield/$(dirname '${filename}')"
-printf '%s' '${contents}' | base64 --decode > '/opt/cybershield/${filename}'
+printf '%s' '${contents}' | base64 --decode | gzip --decompress > '/opt/cybershield/${filename}'
+# These are committed source files; PostgreSQL must read the bind-mounted init.sql.
+chmod 0644 '/opt/cybershield/${filename}'
 %{ endfor ~}
 
 # Build context must not include the runtime secret.
-printf '.env\n' > /opt/cybershield/.dockerignore
+printf '.env\n.backups/\n.database-*.lock\n*.dump\n' > /opt/cybershield/.dockerignore
 if [ ! -f /opt/cybershield/.env ]; then
   password=$(openssl rand -hex 32)
   printf 'APP_PORT=80\nPOSTGRES_DB=cybershield\nPOSTGRES_USER=cybershield_app\nPOSTGRES_PASSWORD=%s\n' \
@@ -79,3 +81,12 @@ COMPOSE
 
 systemctl daemon-reload
 systemctl enable --now cybershield.service
+
+install -m 0644 /opt/cybershield/systemd/cybershield-backup.service /etc/systemd/system/
+install -m 0644 /opt/cybershield/systemd/cybershield-backup.timer /etc/systemd/system/
+printf 'BACKUP_S3_PREFIX=${backup_s3_prefix}\n' > /etc/cybershield-backup.env
+chmod 0600 /etc/cybershield-backup.env
+systemctl daemon-reload
+# Establish an initial backup before scheduling hourly ones.
+systemctl start cybershield-backup.service
+systemctl enable --now cybershield-backup.timer
