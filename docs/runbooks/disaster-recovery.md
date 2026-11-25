@@ -40,6 +40,30 @@ document that limitation honestly. Do not claim a real AWS regional outage.
 4. Optionally insert a second marker after the selected backup but before fencing
    to demonstrate the data-loss window. Explain why that row may be absent in B.
 
+## Drill worksheet
+
+Agree before recording who operates AWS and who records UTC timestamps, checks
+the markers, and reviews the deployment. Start recording before inserting the
+first marker. When switching writers, have the recorder confirm the old writer
+is fenced before announcing that the new endpoint is ready.
+
+| Event | UTC time | Evidence to capture |
+|---|---|---|
+| Marker inserted in A | — | Slug, row timestamp and query result |
+| Selected snapshot started | — | Manifest URI, snapshot timestamp, dump size and SHA-256 |
+| Both backup objects available in B | — | Source `COMPLETED` and destination `REPLICA` statuses |
+| Incident declared and A fenced | — | Declaration timestamp, fencing method and confirmation |
+| B healthy with A's marker | — | B endpoint, health and marker results, workflow link |
+| B-only marker inserted | — | Slug, row timestamp and query result |
+| B fenced and final backup verified | — | Fence confirmation and exact final manifest URI |
+| A healthy with B's marker | — | A endpoint, health and marker results, workflow link |
+| B compute removed | — | Teardown run and EC2/EBS inventory |
+
+Calculate failover RTO from incident declaration to verified B health and
+marker. Calculate the snapshot-age upper bound from the selected snapshot
+timestamp to declaration. Report marker presence separately and keep the
+recording link with the workflow artifacts.
+
 ## Failover
 
 1. Actions → **Failover to recovery region** → main. Confirm primary isolation,
@@ -94,6 +118,14 @@ notification path only; separately demonstrate a real metric-driven transition.
 For example, temporarily plan a low CPU threshold/evaluation period or run a
 bounded CPU load after approval, then restore the normal configuration. CPU load
 can affect the demo and incur T3 credit charges; do not leave it running.
+
+For an alarm rehearsal before the DR drill, recent five-minute CPU averages on
+November 25 were about 1.53%–1.88%. After both email subscriptions are confirmed,
+check the latest samples, then review a Terraform plan that changes only the
+primary high-CPU alarm threshold to 1%. Keep the existing two evaluation periods
+if both recent samples exceed 1%. Capture the metric-driven `OK` → `ALARM`
+transition and both SNS receipts, then restore the 80% threshold with another
+reviewed plan and capture the return to `OK`.
 
 Record the simulator screen and UTC clock from incident declaration through
 verified recovery and failback. Retain workflow URLs, plan/apply summaries,

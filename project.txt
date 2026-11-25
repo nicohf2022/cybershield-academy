@@ -1,0 +1,529 @@
+. Objetivo y enfoque 
+
+Estos proyectos integran las capas del temario (redes, cómputo, almacenamiento, Terraform, CI/CD, seguridad, observabilidad y FinOps) en un caso de negocio concreto. El foco está en la infraestructura, no en el desarrollo de software: la aplicación de cada proyecto es deliberadamente mínima (una imagen pública, un "hola mundo" o una función de menos de 150 líneas) para que el esfuerzo del equipo se concentre en diseñar, aprovisionar, asegurar, observar y costear la plataforma. 
+
+1.1 Principios de diseño 
+
+Simplicidad: alcance base pequeño y cerrado; lo adicional se marca como "Extra" y suma puntos, pero no es obligatorio. 
+
+Agnóstico de proveedor: cada proyecto se describe con componentes genéricos (función, cola, bucket, base NoSQL…). El equipo elige AWS, Google Cloud o Azure y usa la tabla de equivalencias de la sección 3. 
+
+Todo con Terraform: ningún recurso se crea manualmente por consola (salvo el bootstrap del state y la carga de valores secretos). Se acepta OpenTofu como alternativa. 
+
+Costo eficiente: preferencia por servicios serverless y de pago por uso que escalan a cero; los recursos con costo por hora (balanceadores, NAT, bases gestionadas, clústeres) se crean solo cuando se usan y se destruyen al terminar. 
+
+Seguridad por defecto: menor privilegio, sin credenciales de larga duración en el repositorio, cifrado y sin acceso público salvo que el caso lo requiera. 
+
+Nota sobre "agnóstico": Terraform no hace que el código sea portable entre nubes (cada proveedor tiene sus propios recursos). Lo que se pide es que la arquitectura se diseñe con componentes genéricos y que el código se organice en módulos por capacidad (network, compute, storage…), de modo que el mismo diseño pueda implementarse en cualquier proveedor. 
+
+2. Requisitos comunes a todos los proyectos 
+
+2.1 Elección de proveedor y cuentas 
+
+Cada equipo elige un proveedor (AWS, Google Cloud o Azure) y lo justifica en una página (servicios, costo, experiencia del equipo). 
+
+Usar los programas académicos o créditos de prueba disponibles (AWS Academy/Educate, Azure for Students, créditos educativos de Google Cloud). Las condiciones de capas gratuitas cambian: verificarlas al inicio y documentarlas. 
+
+Una sola región por defecto (excepto el proyecto de DR), elegida por menor costo. 
+
+2.2 Estructura de repositorio sugerida 
+
+proyecto/ 
+
+├── README.md                 # cómo desplegar y destruir 
+
+├── docs/                     # arquitectura, IAM, FinOps, runbook 
+
+├── app/                      # código mínimo (función o contenedor) 
+
+├── infra/ 
+
+│   ├── bootstrap/            # bucket del state remoto (una vez) 
+
+│   ├── modules/              # network, compute, storage, ... 
+
+│   └── envs/dev/             # main.tf, variables.tf, outputs.tf, 
+
+│                             # providers.tf, backend.tf, dev.tfvars 
+
+└── .github/workflows/        # ci.yml, deploy.yml, destroy.yml 
+
+ 
+
+2.3 Convenciones de Terraform 
+
+State remoto en almacenamiento de objetos del proveedor con bloqueo (S3 con use_lockfile, GCS o Azure Blob). 
+
+Versiones fijadas de Terraform y providers (required_version, required_providers). 
+
+Etiquetas/labels obligatorias en todos los recursos: project, team, env, owner (default_tags o locals). 
+
+Variables con descripción, tipo y validación; sin valores sensibles en .tfvars versionados. 
+
+Recursos costosos detrás de banderas (enable_lb, enable_nat, enable_db) para crearlos solo cuando se necesiten. 
+
+Calidad: terraform fmt, terraform validate, tflint y un escáner de seguridad (Checkov o Trivy). 
+
+2.4 CI/CD mínimo (GitHub Actions) 
+
+Autenticación con OIDC / identidad federada hacia el proveedor: prohibido guardar claves de acceso de larga duración. 
+
+En cada Pull Request: fmt, validate, tflint, escaneo de seguridad y terraform plan publicado como comentario. 
+
+En merge a main: terraform apply (con aprobación manual mediante environments) y despliegue de la app. 
+
+Workflow manual destroy.yml para destruir todo el entorno con un clic. 
+
+Recomendado: Infracost para mostrar el impacto de costo de cada PR. 
+
+2.5 Control de costos (obligatorio) 
+
+Alerta de presupuesto creada el primer día (ej. USD 10) con avisos al 50%, 80% y 100% a todo el equipo. 
+
+terraform destroy al final de cada sesión de trabajo para recursos con costo por hora; evidencia en el informe final. 
+
+Retención de logs corta (7 días) y TTL en datos de prueba. 
+
+Usar las capacidades más pequeñas disponibles y una sola región. 
+
+Antes de la presentación: desplegar el día anterior, verificar, y destruir inmediatamente después. 
+
+2.6 Entregables comunes 
+
+Diagrama de arquitectura (draw.io, Excalidraw o diagrams-as-code) con flujo de datos y límites de red/seguridad. 
+
+Repositorio con Terraform modular, pipelines y README de despliegue y destrucción. 
+
+Matriz IAM: identidad, permisos, recurso y justificación de cada permiso. 
+
+Estimación FinOps: costo del entorno de pruebas (real, según facturación) y proyección a escala productiva usando la calculadora del proveedor o Infracost. 
+
+Observabilidad: al menos un dashboard y una alerta funcionando. 
+
+Presentación final (15 min) con demo en vivo y evidencia del destroy. 
+
+2.7 Cronograma sugerido (4 semanas) 
+
+Semana 
+
+Objetivo 
+
+Hito verificable 
+
+1 
+
+Diseño y bases 
+
+Diagrama, elección de proveedor, state remoto, presupuesto y pipeline CI (fmt/validate/plan) 
+
+2 
+
+Infraestructura núcleo 
+
+Módulos principales desplegados con Terraform; app mínima funcionando 
+
+3 
+
+Seguridad y observabilidad 
+
+IAM de menor privilegio, secretos, dashboard, alertas, escaneo de seguridad 
+
+4 
+
+FinOps, documentación y demo 
+
+Informe FinOps, runbook, ensayo de demo, destroy final verificado 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+2.8 Rúbrica de evaluación sugerida 
+
+Criterio 
+
+Peso 
+
+Qué se evalúa 
+
+Arquitectura y diseño 
+
+30% 
+
+Diagrama claro, decisiones justificadas, equivalencias de servicios 
+
+Terraform 
+
+25% 
+
+Modularidad, variables, state remoto, idempotencia, destroy limpio 
+
+CI/CD 
+
+10% 
+
+Plan en PR, apply controlado, OIDC sin claves estáticas 
+
+Seguridad e IAM 
+
+10% 
+
+Menor privilegio, secretos, cifrado, escaneo 
+
+Observabilidad 
+
+10% 
+
+Dashboard, alerta disparada en la demo 
+
+FinOps 
+
+10% 
+
+Costo real vs. estimado, proyección y medidas de ahorro 
+
+Presentación 
+
+5% 
+
+Claridad, demo, respuesta a preguntas 
+
+Extras 
+
++10% 
+
+Funcionalidades opcionales implementadas 
+
+ 
+
+3. Tabla de equivalencias de servicios 
+
+Referencia rápida para traducir los componentes genéricos de cada proyecto al proveedor elegido. 
+
+Componente genérico 
+
+AWS 
+
+Google Cloud 
+
+Azure 
+
+Red virtual 
+
+VPC 
+
+VPC 
+
+Virtual Network (VNet) 
+
+Firewall de instancia 
+
+Security Groups / NACL 
+
+Firewall rules 
+
+Network Security Groups 
+
+Máquina virtual 
+
+EC2 
+
+Compute Engine 
+
+Virtual Machines 
+
+Grupo autoescalable 
+
+Auto Scaling Group 
+
+Managed Instance Group 
+
+VM Scale Sets 
+
+Contenedor serverless 
+
+ECS Fargate / App Runner / Lambda (imagen) 
+
+Cloud Run 
+
+Container Apps 
+
+Función serverless 
+
+Lambda 
+
+Cloud Run functions 
+
+Azure Functions 
+
+Kubernetes gestionado 
+
+EKS 
+
+GKE 
+
+AKS 
+
+API Gateway 
+
+API Gateway 
+
+API Gateway 
+
+API Management 
+
+Balanceador L7 
+
+Application Load Balancer 
+
+Cloud Load Balancing 
+
+Application Gateway / Front Door 
+
+Almacenamiento de objetos 
+
+S3 
+
+Cloud Storage 
+
+Blob Storage 
+
+CDN 
+
+CloudFront 
+
+Cloud CDN / Firebase Hosting 
+
+Front Door / Static Web Apps 
+
+Base NoSQL 
+
+DynamoDB 
+
+Firestore 
+
+Cosmos DB / Table Storage 
+
+Base relacional 
+
+RDS / Aurora 
+
+Cloud SQL 
+
+Azure SQL / PostgreSQL Flexible 
+
+Cola / tópico 
+
+SQS / SNS 
+
+Pub/Sub 
+
+Service Bus / Storage Queues 
+
+Eventos 
+
+EventBridge 
+
+Eventarc 
+
+Event Grid 
+
+Programador 
+
+EventBridge Scheduler 
+
+Cloud Scheduler 
+
+Functions timer / Logic Apps 
+
+Secretos 
+
+Secrets Manager / SSM Parameter Store 
+
+Secret Manager 
+
+Key Vault 
+
+Identidad y permisos 
+
+IAM 
+
+IAM (service accounts) 
+
+Entra ID + RBAC (managed identity) 
+
+Monitoreo y logs 
+
+CloudWatch 
+
+Cloud Monitoring / Logging 
+
+Azure Monitor / Log Analytics 
+
+Auditoría 
+
+CloudTrail 
+
+Cloud Audit Logs 
+
+Activity Log 
+
+IA visión / lenguaje 
+
+Rekognition / Comprehend 
+
+Vision API / Natural Language API 
+
+AI Vision / AI Language 
+
+DNS 
+
+Route 53 
+
+Cloud DNS 
+
+Azure DNS 
+
+Presupuestos 
+
+AWS Budgets 
+
+Cloud Billing Budgets 
+
+Cost Management Budgets 
+
+Registro de contenedores 
+
+ECR 
+
+Artifact Registry 
+
+Container Registry 
+
+CyberShield Academy: Simulacro de recuperación ante desastres 
+
+Dificultad 
+
+Costo estimado 
+
+Foco 
+
+Alta 
+
+≈ USD 1 – 5 / mes (región B solo durante el simulacro) 
+
+Terraform parametrizado, DR, replicación, responsabilidad compartida 
+
+ 
+
+El reto 
+
+Una academia quiere demostrar cómo sobrevivir a la caída completa de una región del proveedor. 
+
+Refinamientos respecto a la versión original 
+
+Estrategia "pilot light": en la región B solo existen los datos replicados; el cómputo se crea con un pipeline al declarar el desastre. 
+
+La app es una VM o contenedor con una página que muestra datos leídos de la DB; la DB puede ser PostgreSQL en contenedor con backup a bucket replicado. 
+
+Se mide y documenta el RTO/RPO real obtenido en el simulacro. 
+
+Arquitectura sugerida 
+
+Región A (activa): app + DB ─▶ backup cada hora ─▶ bucket A 
+
+  bucket A ─(replicación entre regiones)─▶ bucket B 
+
+Desastre declarado ─▶ workflow "failover" (1 clic) 
+
+  └─▶ terraform apply -var region=B ─▶ app + DB restaurada desde bucket B 
+
+  DNS / URL apunta a región B 
+
+ 
+
+Componentes por proveedor 
+
+Componente 
+
+AWS 
+
+Google Cloud 
+
+Azure 
+
+Cómputo 
+
+EC2 / ECS 
+
+Compute Engine / Cloud Run 
+
+VM / Container Apps 
+
+Datos 
+
+S3 Cross-Region Replication / RDS snapshot copy 
+
+Bucket dual/multi-región o Storage Transfer 
+
+Blob object replication / GRS 
+
+Orquestación 
+
+GitHub Actions (workflow_dispatch) 
+
+GitHub Actions (workflow_dispatch) 
+
+GitHub Actions (workflow_dispatch) 
+
+DNS (opcional) 
+
+Route 53 failover 
+
+Cloud DNS 
+
+Traffic Manager 
+
+ 
+
+Implementación con Terraform 
+
+Un único root module parametrizado por región, con un state separado por región (workspaces o claves distintas). 
+
+Ningún valor de región o zona hardcodeado; validación de variables. 
+
+Workflow failover y workflow failback documentados. 
+
+Entregables específicos 
+
+Runbook de DR paso a paso y simulacro grabado con tiempos. 
+
+Tabla RTO/RPO objetivo vs. medido. 
+
+Análisis del modelo de responsabilidad compartida y resumen ejecutivo para negocio (1 página). 
+
+Extras opcionales 
+
+Activo-activo con DNS por latencia. 
+
+Pruebas automáticas post-failover (smoke tests). 
+
+Claves de ahorro 
+
+Destruir la región B al terminar el simulacro. 
+
+Datos de prueba pequeños: la replicación y la transferencia entre regiones se cobran por GB. 

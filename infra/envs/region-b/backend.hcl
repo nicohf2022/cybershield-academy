@@ -1,6 +1,5 @@
-bucket       = "cybershield-tfstate-079754672968"
+bucket       = "cybershield-tfstate-079754672968-us-east-2"
 key          = "region-b/terraform.tfstate"
-# This is the state bucket's region, including for the recovery environment.
-region       = "us-east-1"
+region       = "us-east-2"
 encrypt      = true
 use_lockfile = true

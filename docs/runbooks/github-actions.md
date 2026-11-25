@@ -5,6 +5,21 @@ GitHub OIDC are independent; no permanent access key belongs in Actions secrets.
 The existing identity-only role still cannot deploy. New automation roles are
 opt-in bootstrap resources, not silently attached administrator permissions.
 
+The bootstrap apply created the four automation roles on November 25, 2026.
+Use the following environment settings after the Region B backend change is
+published. All role ARNs have the prefix `arn:aws:iam::079754672968:role/`.
+
+| Environment | Region | Role variable | Role name |
+|---|---|---|---|
+| `plan-region-a` | `us-east-1` | `AWS_PLAN_ROLE_ARN` | `CyberShield-plan-region-a` |
+| `plan-region-b` | `us-east-2` | `AWS_PLAN_ROLE_ARN` | `CyberShield-plan-region-b` |
+| `region-a` | `us-east-1` | `AWS_DEPLOY_ROLE_ARN` | `CyberShield-deploy-region-a` |
+| `region-b` | `us-east-2` | `AWS_DEPLOY_ROLE_ARN` | `CyberShield-deploy-region-b` |
+
+Preserve `enable_workflow_roles=true`, the regional automation map,
+`recovery_state_region`, and the existing private budget inputs when planning
+future bootstrap changes. The example file defaults to first-stage bootstrap.
+
 1. Review `infra/bootstrap/automation.tfvars.example`. Supply both regions, their
    name prefixes and correct regional state buckets. The recovery state bucket
    must exist and migration must be verified before DR automation is enabled.

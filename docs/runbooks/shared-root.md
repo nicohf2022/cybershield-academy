@@ -65,23 +65,44 @@ data deletion requires a separate explicit approval to purge object versions,
 review disabling replication and destroy the data resources. State buckets and
 budget use destruction protection and must remain separate from demo teardown.
 
-## Recovery state independence — not yet migrated
+## Recovery state independence
 
-The current Region B backend still points to Region A. `infra/bootstrap` now
-offers opt-in `recovery_state_region` to create a private, encrypted, versioned,
-protected state bucket in Region B. It adds S3 storage/request cost, not compute.
-Review that bootstrap plan from the team's canonical bootstrap backend and
-approve its apply separately. Do not initialize bootstrap from a new empty state.
+Region B migrated to the versioned bucket in `us-east-2` on November 25, 2026.
+Terraform reported no changes with the deployed inputs. The original source
+object remains in the Region A bucket. The migration procedure below records
+how to move the state if a future backend change is needed.
 
-After creation, the **owner of the canonical Region B state** must coordinate a
-maintenance window, save a secure backup, verify no active locks and explicitly
-approve migration. First initialize the existing backend using the wrapper.
-Then, in that same Region B `TF_DATA_DIR`, run an explicitly approved
-`terraform init -migrate-state` with the proposed backend settings from
-`region-b/backend-dr.hcl.example`. Do not use `-reconfigure` to move state and
-never create an empty replacement state. Verify resource addresses, backend
-location, a no-recreation plan and normal lock release before committing the
-new `backend.hcl`. Secure backups must stay outside Git.
+1. Coordinate a maintenance window with both teammates. Pause Terraform
+   operations and confirm that the source has no active lock and the
+   destination has no state or lock history for this key.
+2. Initialize the source using the wrapper from the repository root. Save
+   the exact source object version in a restricted directory outside Git.
+   Record its version ID and capture the source resource addresses for
+   comparison. State backups may contain sensitive values.
+3. After explicit migration approval, use the same Region B cache and run
+   the interactive migration from the repository root.
+
+   ```bash
+   export AWS_PROFILE=cybershield
+   export TF_DATA_DIR="$PWD/.terraform-data/region-b"
+   # Run this with backend.hcl still configured for the source.
+   bash scripts/tf.sh region-b init
+   terraform -chdir=infra/envs/dr init -migrate-state -lockfile=readonly \
+     -backend-config=../region-b/backend-dr.hcl.example
+   ```
+
+4. Compare destination resource addresses, resource data, and outputs with the
+   backup. Record the source and destination lineage and serial for audit.
+   In the November 25 migration the destination had a new lineage and serial
+   1 (source serial 4). All nine addresses, resources and outputs matched.
+   Check that Terraform released the locks normally.
+   Update `infra/envs/region-b/backend.hcl` to match the destination and run
+   a Region B plan with the same inputs used for the deployed configuration.
+   Confirm that the plan reports no changes before publishing the backend
+   configuration and reopening Region B operations.
+5. Teammates with a cached source backend can reinitialize it with
+   `bash scripts/tf.sh region-b init -reconfigure` after the new backend
+   configuration is available and the destination state is verified.
 
 The failover workflow deliberately refuses to run while its state backend is
 outside the recovery region. The primary/root bootstrap state need not be read
@@ -89,10 +110,12 @@ during failover once Region B state and automation are independently available.
 
 ## Evidence still required
 
-Approved adoption, cold boot, independent-state migration, concurrent-lock
-verification, a no-change second plan, scheduled backup observation, actual DR
-restore, alarm activation and final teardown are deployment/test actions. This
-code change does not fabricate those results or authorize running them.
+During the migration window a second Region B plan failed with
+`Error acquiring the state lock` while the first held the lock. The first
+plan reported no changes, and S3 showed that its lock released normally.
+Record the regional failover restore and failback, a metric-driven alarm
+transition, and the final compute teardown. See
+[assignment coverage and evidence status](../status.md) for the remaining work.
 
 Recovery IAM is global readiness infrastructure owned by bootstrap, with no
 hourly compute cost. Populate Region B's `precreated_instance_profile_name`
