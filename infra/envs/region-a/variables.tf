@@ -9,6 +9,31 @@ variable "aws_region" {
   }
 }
 
+variable "recovery_region" {
+  description = "Region B location, used to derive its backup bucket name without reading remote state."
+  type        = string
+  default     = "us-east-2"
+
+  validation {
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", var.recovery_region)) && var.recovery_region != var.aws_region
+    error_message = "Use a valid AWS region different from the primary region."
+  }
+}
+
+variable "recovery_backup_bucket_name" {
+  description = "Existing Region B bucket name; null derives the same default as the recovery root."
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.recovery_backup_bucket_name == null ? true : (
+      length(var.recovery_backup_bucket_name) >= 3 && length(var.recovery_backup_bucket_name) <= 63 &&
+      can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.recovery_backup_bucket_name))
+    )
+    error_message = "Use a valid 3 to 63 character bucket name with lowercase letters, numbers and hyphens."
+  }
+}
+
 variable "project_name" {
   description = "Project name used in resource tags."
   type        = string

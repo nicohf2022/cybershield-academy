@@ -21,6 +21,16 @@ output "backup_bucket_arn" {
   description = "ARN of the S3 bucket used for PostgreSQL backups."
   value       = module.storage.bucket_arn
 }
+
+output "recovery_backup_bucket_name" {
+  description = "Destination bucket name expected by the replication configuration."
+  value       = local.recovery_backup_bucket_name
+}
+
+output "replication_role_arn" {
+  description = "Service role that copies PostgreSQL backups to Region B."
+  value       = module.replication.role_arn
+}
 output "ec2_iam_role_name" {
   description = "Name of the IAM Role assigned to the application instance."
   value       = module.iam.role_name

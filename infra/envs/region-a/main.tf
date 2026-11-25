@@ -1,3 +1,9 @@
+data "aws_caller_identity" "current" {}
+
+locals {
+  recovery_backup_bucket_name = coalesce(var.recovery_backup_bucket_name, "cybershield-backups-${data.aws_caller_identity.current.account_id}-${var.recovery_region}")
+}
+
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
@@ -48,6 +54,17 @@ module "iam" {
   backup_bucket_arn = module.storage.bucket_arn
 }
 
+module "replication" {
+  source = "../../modules/replication"
+
+  name_prefix            = var.name_prefix
+  source_bucket_name     = module.storage.bucket_name
+  destination_bucket_arn = "arn:aws:s3:::${local.recovery_backup_bucket_name}"
+
+  # Wait for source versioning and encryption, not just bucket creation.
+  depends_on = [module.storage]
+}
+
 module "compute" {
   source = "../../modules/compute"
 
@@ -69,7 +86,7 @@ module "compute" {
   })
 
   # First-boot backup needs bucket settings, IAM policies and Internet routing.
-  depends_on = [module.storage, module.iam, module.network]
+  depends_on = [module.storage, module.iam, module.network, module.replication]
 }
 
 module "monitoring" {
