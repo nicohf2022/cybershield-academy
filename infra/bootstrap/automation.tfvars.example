@@ -1,0 +1,11 @@
+# Opt-in example: review IAM and state migration before applying bootstrap.
+recovery_state_region = "us-east-2"
+automation_regions = {
+ region-a = { region = "us-east-1", name_prefix = "cybershield-primary", state_bucket = "cybershield-tfstate-079754672968" }
+ region-b = { region = "us-east-2", name_prefix = "cybershield-recovery", state_bucket = "cybershield-tfstate-079754672968-us-east-2" }
+}
+# Supply real team addresses privately to adopt the existing budget.
+
+# Stage 1: leave false; create boundary/recovery profile/state storage first.
+enable_workflow_roles = false
+# Stage 2: enable only after manually approved primary boundary/tag adoption.

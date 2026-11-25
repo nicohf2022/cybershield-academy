@@ -1,0 +1,19 @@
+name: Destroy demo compute (preserve backups and state)
+on:
+  workflow_dispatch:
+    inputs:
+      region_key:
+        description: 'Region whose hourly demo infrastructure will be removed'
+        type: choice
+        options: [region-a, region-b]
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  teardown:
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: ${{ inputs.region_key }}
+      operation: teardown
+      allow_ephemeral_deletes: true

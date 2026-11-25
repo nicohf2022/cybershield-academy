@@ -1,0 +1,38 @@
+name: Failover to recovery region
+on:
+  workflow_dispatch:
+    inputs:
+      primary_isolated:
+        description: 'I have declared the incident and fenced/unavailable primary writes'
+        type: boolean
+        required: true
+        default: false
+      expected_slug:
+        description: 'Known pre-incident marker slug to verify in recovered data'
+        type: string
+        required: true
+      incident_at:
+        description: 'Actual incident UTC ISO timestamp; empty records start of this workflow job'
+        type: string
+        default: ''
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  confirm-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          ISOLATED: ${{ inputs.primary_isolated }}
+        run: test "$ISOLATED" = true
+  recover:
+    needs: confirm-isolation
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: region-b
+      operation: recover
+      manifest_uri: ${{ vars.RECOVERY_BACKUP_S3_PREFIX }}
+      measure_dr: true
+      require_recovery_backend: true
+      expected_slug: ${{ inputs.expected_slug }}
+      incident_at: ${{ inputs.incident_at }}

@@ -1,4 +1,6 @@
 # Terraform
+.terraform-data/
+artifacts/
 **/.terraform/*
 infra/modules/**/.terraform.lock.hcl
 *.tfstate

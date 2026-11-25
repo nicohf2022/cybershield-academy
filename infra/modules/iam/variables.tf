@@ -35,3 +35,28 @@ variable "tags" {
     error_message = "Tag keys and values cannot be empty."
   }
 }
+
+variable "restore_bucket_arn" {
+  description = "Optional trusted source bucket for failback/restore; read-only access."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.restore_bucket_arn == null ? true : can(regex("^arn:aws:s3:::[a-z0-9-]+$", var.restore_bucket_arn))
+    error_message = "Use a bucket ARN without an object path."
+  }
+}
+
+variable "log_group_arn" {
+  description = "Project log-group ARN ending in :*, used by Docker logging and the backup log collector."
+  type        = string
+  validation {
+    condition     = can(regex("^arn:aws:logs:[^:]+:[0-9]{12}:log-group:/cybershield/.+:\\*$", var.log_group_arn))
+    error_message = "Provide the regional CyberShield log-group ARN ending in :*."
+  }
+}
+
+variable "permissions_boundary_arn" {
+  description = "Project boundary limiting workload/service role permissions during CI deployment."
+  type        = string
+  default     = null
+}

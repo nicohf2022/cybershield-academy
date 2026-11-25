@@ -1,0 +1,63 @@
+name: Failback to primary (freeze recovery writer first)
+on:
+  workflow_dispatch:
+    inputs:
+      expected_slug:
+        description: 'Marker written in the recovery database that must survive failback'
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  freeze:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: region-b
+    concurrency:
+      group: terraform-region-b
+      cancel-in-progress: false
+    outputs:
+      manifest_uri: ${{ steps.backup.outputs.manifest_uri }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: ./.github/actions/require-approval
+        with:
+          environment: region-b
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Freeze source writes and take final backup
+        id: backup
+        env:
+          REGION: ${{ vars.AWS_REGION }}
+          BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX }}
+        run: |
+          bash scripts/tf.sh region-b init
+          instance=$(bash scripts/tf.sh region-b output -raw instance_id)
+          python3 scripts/dr.py freeze --region "$REGION" --instance "$instance"
+          python3 scripts/dr.py select --uri "$BACKUP_S3_PREFIX"
+  restore-primary:
+    needs: freeze
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: region-a
+      operation: recover
+      manifest_uri: ${{ needs.freeze.outputs.manifest_uri }}
+      allow_ephemeral_deletes: true
+      expected_slug: ${{ inputs.expected_slug }}
+  teardown-recovery:
+    needs: restore-primary
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: region-b
+      operation: teardown
+      allow_ephemeral_deletes: true

@@ -16,6 +16,8 @@ resource "aws_s3_bucket_versioning" "backups" {
   }
 }
 
+# SSE-S3 AES256 is deliberate for this low-cost demo; see docs/security.md.
+#trivy:ignore:AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
   bucket = aws_s3_bucket.backups.id
 
@@ -75,7 +77,7 @@ resource "aws_s3_bucket_policy" "secure_transport" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "backups" {
-  count = var.noncurrent_version_expiration_days == null ? 0 : 1
+  count = var.noncurrent_version_expiration_days == null && var.current_version_expiration_days == null ? 0 : 1
 
   bucket = aws_s3_bucket.backups.id
 
@@ -85,8 +87,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
 
     filter {}
 
-    noncurrent_version_expiration {
-      noncurrent_days = var.noncurrent_version_expiration_days
+    dynamic "noncurrent_version_expiration" {
+      for_each = var.noncurrent_version_expiration_days == null ? [] : [var.noncurrent_version_expiration_days]
+      content {
+        noncurrent_days = noncurrent_version_expiration.value
+      }
+    }
+
+    dynamic "expiration" {
+      for_each = var.current_version_expiration_days == null ? [] : [var.current_version_expiration_days]
+      content {
+        days = expiration.value
+      }
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
     }
   }
 

@@ -1,5 +1,10 @@
 # Primary EC2 application startup
 
+> Current code uses `infra/envs/dr` and `scripts/tf.sh`; follow
+> [shared-root adoption](shared-root.md) and [workflow setup](github-actions.md).
+> Earlier root-directory commands and recorded deployment evidence below are
+> historical. No existing state is automatically migrated by the refactor.
+
 Region A renders the existing app files into EC2 user data. No GitHub credentials
 or runtime Git checkout are required. The x86_64 Amazon Linux 2023 host installs
 Docker and pinned Compose/Buildx plugins, verifies their release checksums, and

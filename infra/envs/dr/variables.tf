@@ -1,18 +1,18 @@
 variable "aws_region" {
-  description = "AWS region used by the primary environment."
+  description = "AWS region used by the regional environment."
   type        = string
-  default     = "us-east-1"
+
 
   validation {
-    condition     = var.aws_region == "us-east-1"
-    error_message = "The primary environment must use us-east-1."
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", var.aws_region))
+    error_message = "Provide a valid AWS region."
   }
 }
 
 variable "recovery_region" {
   description = "Region B location, used to derive its backup bucket name without reading remote state."
   type        = string
-  default     = "us-east-2"
+
 
   validation {
     condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]+$", var.recovery_region)) && var.recovery_region != var.aws_region
@@ -62,8 +62,8 @@ variable "environment" {
   default     = "primary"
 
   validation {
-    condition     = var.environment == "primary"
-    error_message = "Region A must use the primary environment."
+    condition     = contains(["primary", "disaster-recovery"], var.environment)
+    error_message = "Use primary or disaster-recovery."
   }
 }
 
@@ -79,7 +79,7 @@ variable "owner" {
 }
 
 variable "name_prefix" {
-  description = "Prefix used to name resources in the primary environment."
+  description = "Prefix used to name resources in the regional environment."
   type        = string
   default     = "cybershield-primary"
 
@@ -94,7 +94,7 @@ variable "name_prefix" {
 }
 
 variable "vpc_cidr" {
-  description = "IPv4 CIDR range assigned to the primary VPC."
+  description = "IPv4 CIDR range assigned to the regional VPC."
   type        = string
   default     = "10.10.0.0/16"
 
@@ -118,18 +118,18 @@ variable "public_subnet_cidr" {
 variable "availability_zone" {
   description = "Availability Zone used by the public subnet."
   type        = string
-  default     = "us-east-1a"
+  default     = null
 
   validation {
-    condition     = can(regex("^us-east-1[a-z]$", var.availability_zone))
-    error_message = "The Availability Zone must belong to us-east-1."
+    condition     = var.availability_zone == null ? true : startswith(var.availability_zone, var.aws_region)
+    error_message = "The Availability Zone must belong to aws_region."
   }
 }
 
 variable "allowed_http_cidrs" {
   description = "IPv4 CIDR ranges allowed to access the application through HTTP."
   type        = set(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["127.0.0.1/32"]
 
   validation {
     condition = (
@@ -145,13 +145,13 @@ variable "allowed_http_cidrs" {
 variable "backup_bucket_name" {
   description = "Globally unique name of the S3 bucket used for PostgreSQL backups."
   type        = string
-  default     = "cybershield-backups-079754672968-us-east-1"
+  default     = null
 
   validation {
     condition = (
-      length(var.backup_bucket_name) >= 3 &&
-      length(var.backup_bucket_name) <= 63 &&
-      can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.backup_bucket_name))
+      var.backup_bucket_name == null ? true : (length(var.backup_bucket_name) >= 3 &&
+        length(var.backup_bucket_name) <= 63 &&
+      can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.backup_bucket_name)))
     )
     error_message = "The backup bucket name must contain 3 to 63 lowercase letters, numbers, or hyphens."
   }
@@ -227,7 +227,7 @@ variable "notification_email_addresses" {
 variable "log_retention_days" {
   description = "Number of days that application logs are retained in CloudWatch Logs."
   type        = number
-  default     = 14
+  default     = 7
 
   validation {
     condition = contains([
@@ -271,5 +271,71 @@ variable "cpu_evaluation_periods" {
       floor(var.cpu_evaluation_periods) == var.cpu_evaluation_periods
     )
     error_message = "CPU evaluation periods must be a whole number between 1 and 10."
+  }
+}
+
+variable "enable_compute" {
+  description = "Create the VM, network, workload IAM and monitoring only for an active demo."
+  type        = bool
+  default     = false
+}
+variable "enable_replication" {
+  description = "Keep A-to-B data replication active independently of compute."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.enable_replication || var.environment == "primary"
+    error_message = "Only the primary region owns forward replication."
+  }
+}
+variable "restore_manifest_uri" {
+  description = "Pinned trusted S3 manifest URI to restore before app start; required for recovery compute."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.restore_manifest_uri == null ? true : can(regex("^s3://[a-z0-9-]+/postgres/postgres-[0-9TZ-]+[a-f0-9]*\\.json$", var.restore_manifest_uri))
+    error_message = "Use the exact project S3 postgres manifest URI without shell characters."
+  }
+  validation {
+    condition     = !var.enable_compute || var.environment != "disaster-recovery" || var.restore_manifest_uri != null
+    error_message = "Recovery compute must restore a pinned backup before starting the app."
+  }
+  validation {
+    condition     = var.restore_manifest_uri == null ? true : contains([local.backup_bucket_name, local.recovery_backup_bucket_name], try(split("/", var.restore_manifest_uri)[2], ""))
+    error_message = "Restore only from the configured regional or peer project backup bucket."
+  }
+
+}
+variable "backup_retention_days" {
+  description = "Expire timestamped current backups after this many days; noncurrent versions expire separately."
+  type        = number
+  default     = 7
+  validation {
+    condition     = var.backup_retention_days >= 2 && var.backup_retention_days <= 365 && floor(var.backup_retention_days) == var.backup_retention_days
+    error_message = "Use 2 to 365 whole days."
+  }
+}
+
+variable "workload_permissions_boundary_arn" {
+  description = "Optional project workload boundary provisioned by bootstrap; CI deployments require it."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.workload_permissions_boundary_arn == null ? true : can(regex("^arn:aws:iam::[0-9]{12}:policy/", var.workload_permissions_boundary_arn))
+    error_message = "Provide the bootstrap workload boundary policy ARN."
+  }
+}
+
+variable "precreated_instance_profile_name" {
+  description = "Recovery profile created by bootstrap before disaster, avoiding IAM control-plane changes during failover."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.precreated_instance_profile_name == null ? true : can(regex("^cybershield-[a-z0-9-]+$", var.precreated_instance_profile_name))
+    error_message = "Use a preprovisioned project instance profile name."
+  }
+  validation {
+    condition     = !var.enable_compute || var.environment != "disaster-recovery" || var.precreated_instance_profile_name != null
+    error_message = "Recovery compute requires a bootstrap-precreated instance profile."
   }
 }

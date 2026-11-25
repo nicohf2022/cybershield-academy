@@ -1,5 +1,10 @@
 # CI and GitHub OIDC foundation
 
+> Current code uses `infra/envs/dr` and `scripts/tf.sh`; follow
+> [shared-root adoption](shared-root.md) and [workflow setup](github-actions.md).
+> Earlier root-directory commands and recorded deployment evidence below are
+> historical. No existing state is automatically migrated by the refactor.
+
 ## Current scope
 
 CI checks formatting, initializes providers without a backend, and validates

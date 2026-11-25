@@ -1,5 +1,10 @@
 # Replicated PostgreSQL backups
 
+> Current code uses `infra/envs/dr` and `scripts/tf.sh`; follow
+> [shared-root adoption](shared-root.md) and [workflow setup](github-actions.md).
+> Earlier root-directory commands and recorded deployment evidence below are
+> historical. No existing state is automatically migrated by the refactor.
+
 Region B now declares a permanent backup bucket using the existing storage
 module. It has versioning, SSE-S3 encryption, blocked public access,
 bucket-owner-enforced ownership and an HTTPS-only policy. There is no recovery
@@ -119,6 +124,39 @@ terraform -chdir=infra/envs/region-b test
 
 The Terraform tests mock AWS; they neither create resources nor prove live
 replication. CI runs them after validation.
+
+## Live deployment evidence: 2026-11-25 UTC
+
+After explicit approval, the saved Region B plan created seven resources: the
+recovery bucket and its six storage/security settings. The subsequent plan
+reported no changes. Versioning, AES256 encryption and all public-access blocks
+were verified on `cybershield-backups-079754672968-us-east-2`.
+
+The approved Region A plan was scoped exceptionally to `module.replication`:
+three resources were added, with none changed or destroyed. This scope preserved
+the repaired primary EC2 while adding the S3 service role, inline policy and
+replication rule. The rule is enabled for `postgres/`, targets the recovery
+bucket and disables delete-marker replication.
+
+A fresh backup was generated on the existing primary EC2 after enabling the
+rule. It uploaded at 02:58:01 UTC. Its manifest key is
+`postgres/postgres-20261125T025759884147Z-47aeb5e5.json`; the corresponding dump
+is 2,975 bytes and the manifest is 302 bytes. Both source objects reported
+`COMPLETED`, and both destination objects reported `REPLICA`. A download from
+Region B verified the dump size and SHA-256 against its manifest at
+02:59:05 UTC. These observations do not establish the exact replication latency
+or constitute a measured full DR exercise.
+
+The existing primary instance `i-0aabe1d8be3ce01e1` was not replaced; its public
+health endpoint still returned HTTP 200. A full Region A plan was reviewed after
+the targeted apply: it still proposes replacement due to corrected user data,
+plus updates to the two instance-dependent alarms. Those changes were not
+approved or applied. Do not interpret the scoped apply as complete regional
+idempotence or routinely use targeting to bypass review.
+
+Recovery compute, restoration from this actual replicated backup, failover and
+failback remain separate milestones. Older source backups created before the
+replication rule were not backfilled by this deployment.
 
 References:
 - [AWS replication permissions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/setting-repl-config-perm-overview.html)
