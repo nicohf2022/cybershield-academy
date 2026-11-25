@@ -60,6 +60,12 @@ module "compute" {
   associate_public_ip_address = var.associate_public_ip_address
   root_volume_size            = var.root_volume_size
   enable_detailed_monitoring  = var.enable_detailed_monitoring
+  user_data = templatefile("${path.module}/templates/user-data.sh.tftpl", {
+    app_files = {
+      for filename in ["compose.yaml", "Dockerfile", "requirements.txt", "database/init.sql", "src/app.py", "src/templates/index.html"] :
+      filename => filebase64("${path.module}/../../../app/${filename}")
+    }
+  })
 }
 
 module "monitoring" {

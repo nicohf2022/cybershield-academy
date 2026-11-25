@@ -1,0 +1,81 @@
+#!/bin/bash
+set -euo pipefail
+# Never enable shell tracing: the database password is generated on this host.
+umask 077
+
+dnf install -y docker openssl
+systemctl enable --now docker
+
+# Pinned Compose plugin, installed using Docker's documented manual method.
+compose_version=v5.6.0
+plugin_dir=/usr/local/lib/docker/cli-plugins
+install -d -m 0755 "$plugin_dir"
+curl --fail --location --retry 5 \
+  "https://github.com/docker/compose/releases/download/$compose_version/docker-compose-linux-x86_64" \
+  -o "$plugin_dir/docker-compose"
+curl --fail --location --retry 5 \
+  "https://github.com/docker/compose/releases/download/$compose_version/docker-compose-linux-x86_64.sha256" \
+  -o /tmp/cybershield-compose.sha256
+(cd "$plugin_dir" && sha256sum --check /tmp/cybershield-compose.sha256)
+chmod 0755 "$plugin_dir/docker-compose"
+docker compose version
+
+install -d -m 0700 /opt/cybershield
+%{ for filename, contents in app_files ~}
+install -d -m 0700 "/opt/cybershield/$(dirname '${filename}')"
+printf '%s' '${contents}' | base64 --decode > '/opt/cybershield/${filename}'
+%{ endfor ~}
+
+# Build context must not include the runtime secret.
+printf '.env\n' > /opt/cybershield/.dockerignore
+if [ ! -f /opt/cybershield/.env ]; then
+  password=$(openssl rand -hex 32)
+  printf 'APP_PORT=80\nPOSTGRES_DB=cybershield\nPOSTGRES_USER=cybershield_app\nPOSTGRES_PASSWORD=%s\n' \
+    "$password" > /opt/cybershield/.env
+  unset password
+fi
+chmod 0600 /opt/cybershield/.env
+
+cat > /etc/systemd/system/cybershield.service <<'UNIT'
+[Unit]
+Description=CyberShield application and PostgreSQL
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/cybershield
+ExecStart=/usr/bin/docker compose --project-name cybershield up --detach --build --wait --wait-timeout 180
+ExecStartPost=/usr/bin/curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1/health
+ExecStop=/usr/bin/docker compose --project-name cybershield stop
+TimeoutStartSec=1200
+TimeoutStopSec=120
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# Bound local container log growth; this file is separate from the app source.
+cat > /opt/cybershield/compose.override.yaml <<'COMPOSE'
+services:
+  app:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  db:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+COMPOSE
+
+systemctl daemon-reload
+systemctl enable --now cybershield.service
