@@ -52,3 +52,32 @@ variable "owner" {
     error_message = "The owner cannot be empty."
   }
 }
+
+variable "backup_bucket_name" {
+  description = "Optional recovery bucket name; null derives an account- and region-specific name."
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.backup_bucket_name == null ? true : (
+      length(var.backup_bucket_name) >= 3 && length(var.backup_bucket_name) <= 63 &&
+      can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.backup_bucket_name))
+    )
+    error_message = "Use a valid 3 to 63 character bucket name with lowercase letters, numbers and hyphens."
+  }
+}
+
+variable "backup_noncurrent_version_expiration_days" {
+  description = "Days to retain noncurrent recovery object versions; current backups are retained."
+  type        = number
+  default     = 90
+
+  validation {
+    condition = (
+      var.backup_noncurrent_version_expiration_days >= 30 &&
+      var.backup_noncurrent_version_expiration_days <= 3650 &&
+      floor(var.backup_noncurrent_version_expiration_days) == var.backup_noncurrent_version_expiration_days
+    )
+    error_message = "Use a whole number of days between 30 and 3650."
+  }
+}

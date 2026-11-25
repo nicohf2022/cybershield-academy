@@ -55,6 +55,8 @@ failure. A killed process may leave temporary files or orphan dump objects.
 Bucket encryption, public access blocking, lifecycle and replication remain
 Terraform responsibilities. Backups add storage, request and replication costs;
 this script does not create or configure buckets or replication.
+See the [replication runbook](s3-replication.md) for the regional bucket setup,
+deployment order and cross-region verification.
 
 ## Restore (explicit replacement)
 
