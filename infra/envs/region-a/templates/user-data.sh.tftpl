@@ -12,13 +12,27 @@ plugin_dir=/usr/local/lib/docker/cli-plugins
 install -d -m 0755 "$plugin_dir"
 curl --fail --location --retry 5 \
   "https://github.com/docker/compose/releases/download/$compose_version/docker-compose-linux-x86_64" \
-  -o "$plugin_dir/docker-compose"
+  -o "$plugin_dir/docker-compose-linux-x86_64"
 curl --fail --location --retry 5 \
   "https://github.com/docker/compose/releases/download/$compose_version/docker-compose-linux-x86_64.sha256" \
   -o /tmp/cybershield-compose.sha256
 (cd "$plugin_dir" && sha256sum --check /tmp/cybershield-compose.sha256)
+mv "$plugin_dir/docker-compose-linux-x86_64" "$plugin_dir/docker-compose"
 chmod 0755 "$plugin_dir/docker-compose"
 docker compose version
+
+# Amazon Linux's Docker package does not include the build plugin Compose needs.
+buildx_version=v0.39.1
+curl --fail --location --retry 5 \
+  "https://github.com/docker/buildx/releases/download/$buildx_version/buildx-$buildx_version.linux-amd64" \
+  -o "$plugin_dir/buildx-$buildx_version.linux-amd64"
+curl --fail --location --retry 5 \
+  "https://github.com/docker/buildx/releases/download/$buildx_version/checksums.txt" \
+  -o /tmp/cybershield-buildx.sha256
+(cd "$plugin_dir" && sha256sum --check --ignore-missing /tmp/cybershield-buildx.sha256)
+mv "$plugin_dir/buildx-$buildx_version.linux-amd64" "$plugin_dir/docker-buildx"
+chmod 0755 "$plugin_dir/docker-buildx"
+docker buildx version
 
 install -d -m 0700 /opt/cybershield
 %{ for filename, contents in app_files ~}
@@ -51,7 +65,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/cybershield
 ExecStart=/usr/bin/docker compose --project-name cybershield up --detach --build --wait --wait-timeout 180
-ExecStartPost=/usr/bin/curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1/health
+ExecStartPost=/usr/bin/curl --fail --retry 30 --retry-delay 2 --retry-all-errors --max-time 5 --retry-max-time 120 http://127.0.0.1/health
 ExecStop=/usr/bin/docker compose --project-name cybershield stop
 TimeoutStartSec=1200
 TimeoutStopSec=120
