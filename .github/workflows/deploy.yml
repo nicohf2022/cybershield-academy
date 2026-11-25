@@ -1,0 +1,32 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**', 'app/**', 'scripts/**', '.github/workflows/**']
+  workflow_dispatch:
+    inputs:
+      restore_manifest_uri:
+        description: 'Pinned primary backup manifest, required for any EC2 replacement'
+        type: string
+        default: ''
+      allow_ephemeral_deletes:
+        description: 'Review and allow compute replacement/removal; backup buckets remain protected'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  recovery-storage:
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: region-b
+      operation: deploy
+  primary:
+    needs: recovery-storage
+    uses: ./.github/workflows/terraform-operation.yml
+    with:
+      region_key: region-a
+      operation: deploy
+      manifest_uri: ${{ inputs.restore_manifest_uri || '' }}
+      allow_ephemeral_deletes: ${{ inputs.allow_ephemeral_deletes || false }}

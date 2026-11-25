@@ -39,7 +39,7 @@ variable "notification_email_addresses" {
 variable "log_retention_days" {
   description = "Number of days that application logs are retained in CloudWatch Logs."
   type        = number
-  default     = 14
+  default     = 7
 
   validation {
     condition = contains([

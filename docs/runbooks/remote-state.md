@@ -1,5 +1,10 @@
 # Remote Terraform state
 
+> Current code uses `infra/envs/dr` and `scripts/tf.sh`; follow
+> [shared-root adoption](shared-root.md) and [workflow setup](github-actions.md).
+> Earlier root-directory commands and recorded deployment evidence below are
+> historical. No existing state is automatically migrated by the refactor.
+
 Trello: [Crear bootstrap del state remoto](https://trello.com/c/v5rMJJaj)
 
 ## What this step does

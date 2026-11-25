@@ -18,9 +18,10 @@ data "aws_iam_policy_document" "ec2_assume_role" {
 }
 
 resource "aws_iam_role" "ec2" {
-  name               = local.role_name
-  description        = "Role assumed by the CyberShield Academy EC2 application instance"
-  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+  permissions_boundary = var.permissions_boundary_arn
+  name                 = local.role_name
+  description          = "Role assumed by the CyberShield Academy EC2 application instance"
+  assume_role_policy   = data.aws_iam_policy_document.ec2_assume_role.json
 
   tags = merge(var.tags, {
     Component = "IAM"
@@ -45,9 +46,24 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
-  role       = aws_iam_role.ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+resource "aws_iam_role_policy" "logs" {
+  name = "${var.name_prefix}-logs"
+  role = aws_iam_role.ec2.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents"]
+        Resource = var.log_group_arn
+      }
+    ]
+  })
 }
 
 data "aws_iam_policy_document" "backup_access" {
@@ -71,7 +87,27 @@ data "aws_iam_policy_document" "backup_access" {
       "s3:GetObjectVersion",
       "s3:PutObject",
     ]
-    resources = ["${var.backup_bucket_arn}/*"]
+    resources = ["${var.backup_bucket_arn}/postgres/*"]
+  }
+
+  dynamic "statement" {
+    for_each = var.restore_bucket_arn == null ? [] : [var.restore_bucket_arn]
+    content {
+      sid       = "ReadTrustedRestoreBucket"
+      effect    = "Allow"
+      actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
+      resources = [statement.value]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.restore_bucket_arn == null ? [] : [var.restore_bucket_arn]
+    content {
+      sid       = "ReadTrustedRestoreObjects"
+      effect    = "Allow"
+      actions   = ["s3:GetObject", "s3:GetObjectVersion"]
+      resources = ["${statement.value}/postgres/*"]
+    }
   }
 }
 

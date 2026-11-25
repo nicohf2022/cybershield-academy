@@ -1,0 +1,6 @@
+# Activate only AFTER approved bootstrap deployment AND state migration.
+bucket = "cybershield-tfstate-079754672968-us-east-2"
+key = "region-b/terraform.tfstate"
+region = "us-east-2"
+encrypt = true
+use_lockfile = true

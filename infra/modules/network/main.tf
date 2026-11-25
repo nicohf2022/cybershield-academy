@@ -18,7 +18,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.this.id
   cidr_block              = var.public_subnet_cidr
   availability_zone       = var.availability_zone
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = merge(var.tags, local.component_tags, {
     Name = "${var.name_prefix}-public-subnet"
@@ -78,11 +78,15 @@ resource "aws_vpc_security_group_ingress_rule" "app_http" {
   })
 }
 
+# Bootstrap needs HTTPS to AWS, GitHub and container registries with dynamic IPs.
+#trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "app_ipv4" {
   security_group_id = aws_security_group.app.id
-  description       = "Allow outbound IPv4 traffic to the Internet"
+  description       = "HTTPS to AWS APIs, package sources and container registries"
   cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
 
   tags = merge(var.tags, local.component_tags, {
     Name = "${var.name_prefix}-app-ipv4-egress"

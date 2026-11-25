@@ -1,0 +1,10 @@
+aws_region                       = "us-east-2"
+recovery_region                  = "us-east-1"
+environment                      = "disaster-recovery"
+name_prefix                      = "cybershield-recovery"
+vpc_cidr                         = "10.20.0.0/16"
+public_subnet_cidr               = "10.20.1.0/24"
+enable_compute                   = false
+enable_replication               = false
+precreated_instance_profile_name = "cybershield-recovery-ec2-profile"
+backup_retention_days            = 14

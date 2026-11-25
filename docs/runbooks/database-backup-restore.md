@@ -175,3 +175,9 @@ and EC2 timer execution require separate AWS verification.
 
 References: [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html),
 [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
+
+The shared-root adoption now sends app/db logs through Docker awslogs and backup
+and restore file logs through CloudWatch Agent. Backup unit output is appended
+to `/var/log/cybershield-backup.log`; use that file as well as service status
+when diagnosing a newly adopted host. Historical hosts retain their old journal
+configuration until an approved deployment. See [DR runbook](disaster-recovery.md).

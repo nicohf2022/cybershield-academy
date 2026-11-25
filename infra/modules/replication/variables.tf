@@ -49,3 +49,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "permissions_boundary_arn" {
+  description = "Project boundary limiting workload/service role permissions during CI deployment."
+  type        = string
+  default     = null
+}

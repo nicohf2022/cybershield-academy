@@ -1,0 +1,175 @@
+name: Approved Terraform operation
+on:
+  workflow_call:
+    inputs:
+      region_key:
+        type: string
+        required: true
+      operation:
+        type: string
+        required: true
+      manifest_uri:
+        type: string
+        default: ''
+      allow_ephemeral_deletes:
+        type: boolean
+        default: false
+      require_recovery_backend:
+        type: boolean
+        default: false
+      measure_dr:
+        type: boolean
+        default: false
+      incident_at:
+        type: string
+        default: ''
+      expected_slug:
+        type: string
+        default: ''
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: plan-${{ inputs.region_key }}
+    concurrency:
+      group: terraform-${{ inputs.region_key }}
+      cancel-in-progress: false
+    outputs:
+      manifest_uri: ${{ steps.backup.outputs.manifest_uri }}
+      incident_at: ${{ steps.clock.outputs.incident_at }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Record incident clock
+        id: clock
+        env:
+          INCIDENT_AT: ${{ inputs.incident_at }}
+        run: |
+          python3 - <<'PYCODE'
+          import datetime, os
+          now = datetime.datetime.now(datetime.timezone.utc)
+          incident = datetime.datetime.fromisoformat(os.environ['INCIDENT_AT']) if os.environ['INCIDENT_AT'] else now
+          if incident.tzinfo is None or incident > now:
+              raise ValueError('Incident must be a past/current timestamp with timezone')
+          value = incident.astimezone(datetime.timezone.utc).isoformat()
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('incident_at=' + value + '\n')
+          PYCODE
+      - name: Prepare reviewed plan
+        id: backup
+        env:
+          REGION_KEY: ${{ inputs.region_key }}
+          OPERATION: ${{ inputs.operation }}
+          MANIFEST_URI: ${{ inputs.manifest_uri }}
+          ALLOW_DELETES: ${{ inputs.allow_ephemeral_deletes }}
+          CHECK_BACKEND: ${{ inputs.require_recovery_backend }}
+          REGION: ${{ vars.AWS_REGION }}
+          TF_VAR_allowed_http_cidrs: ${{ vars.ALLOWED_HTTP_CIDRS }}
+          TF_VAR_workload_permissions_boundary_arn: ${{ vars.AWS_WORKLOAD_BOUNDARY_ARN }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in deploy|recover|teardown) ;; *) exit 2 ;; esac
+          test -n "$TF_VAR_allowed_http_cidrs"
+          test -n "$TF_VAR_workload_permissions_boundary_arn"
+          mkdir -p artifacts
+          if [ "$CHECK_BACKEND" = true ]; then
+            python3 scripts/dr.py backend-check --backend "infra/envs/$REGION_KEY/backend.hcl" --region "$REGION"
+          fi
+          if [ -n "$MANIFEST_URI" ]; then
+            python3 scripts/dr.py select --uri "$MANIFEST_URI" --output artifacts/selection.json
+            MANIFEST_URI=$(python3 -c 'import json; print(json.load(open("artifacts/selection.json"))["manifest_uri"])')
+          fi
+          bash scripts/tf.sh "$REGION_KEY" init
+          extra=()
+          if [ "$OPERATION" = teardown ]; then extra+=(-var=enable_compute=false); fi
+          if [ "$OPERATION" = recover ]; then
+            test -n "$MANIFEST_URI"
+            extra+=(-var=enable_compute=true)
+          fi
+          if [ -n "$MANIFEST_URI" ]; then extra+=("-var=restore_manifest_uri=$MANIFEST_URI"); fi
+          bash scripts/tf.sh "$REGION_KEY" plan "${extra[@]}" -out="$PWD/artifacts/review.tfplan" > artifacts/plan.log
+          bash scripts/tf.sh "$REGION_KEY" show -json "$PWD/artifacts/review.tfplan" > artifacts/plan.json
+          flags=()
+          if [ "$ALLOW_DELETES" = true ]; then flags+=(--allow-ephemeral-deletes); fi
+          python3 scripts/plan_summary.py artifacts/plan.json "${flags[@]}" | tee artifacts/summary.md
+          cat artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+          sha256sum artifacts/review.tfplan > artifacts/review.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-plan-${{ inputs.region_key }}
+          path: artifacts/
+          retention-days: 1
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ inputs.region_key }}
+    concurrency:
+      group: terraform-${{ inputs.region_key }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - name: Verify approval configuration before obtaining deployment credentials
+        uses: ./.github/actions/require-approval
+        with:
+          environment: ${{ inputs.region_key }}
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 3600
+      - uses: actions/download-artifact@v4
+        with:
+          name: reviewed-plan-${{ inputs.region_key }}
+          path: artifacts
+      - name: Apply the reviewed saved plan
+        env:
+          REGION_KEY: ${{ inputs.region_key }}
+        run: |
+          sha256sum --check artifacts/review.sha256
+          bash scripts/tf.sh "$REGION_KEY" init
+          bash scripts/tf.sh "$REGION_KEY" apply "$PWD/artifacts/review.tfplan"
+      - name: Verify recovery and record results
+        if: inputs.operation != 'teardown'
+        env:
+          REGION_KEY: ${{ inputs.region_key }}
+          REGION: ${{ vars.AWS_REGION }}
+          INCIDENT_AT: ${{ needs.plan.outputs.incident_at }}
+          EXPECTED_SLUG: ${{ inputs.expected_slug }}
+          MEASURE_DR: ${{ inputs.measure_dr }}
+        run: |
+          set -euo pipefail
+          instance=$(bash scripts/tf.sh "$REGION_KEY" output -raw instance_id)
+          if [ "$instance" = null ] || [ -z "$instance" ]; then exit 0; fi
+          extra=()
+          if [ "$MEASURE_DR" = true ] && [ -f artifacts/selection.json ]; then
+            extra+=(--selection artifacts/selection.json --incident-at "$INCIDENT_AT")
+          fi
+          if [ -n "$EXPECTED_SLUG" ]; then extra+=(--expected-slug "$EXPECTED_SLUG"); fi
+          python3 scripts/dr.py smoke --region "$REGION" --instance "$instance" "${extra[@]}" --output artifacts/result.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-results-${{ inputs.region_key }}
+          path: artifacts/result.json
+          if-no-files-found: ignore
+          retention-days: 7

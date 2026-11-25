@@ -5,6 +5,40 @@ locals {
   status_check_alarm_name = "${var.name_prefix}-status-check-failed"
 }
 
+data "aws_region" "current" {}
+
+resource "aws_cloudwatch_dashboard" "application" {
+  dashboard_name = "${var.name_prefix}-overview"
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type = "metric", x = 0, y = 0, width = 12, height = 6
+        properties = {
+          title   = "EC2 CPU utilization", region = data.aws_region.current.region
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", var.instance_id]]
+          period  = 300, stat = "Average"
+        }
+      },
+      {
+        type = "metric", x = 12, y = 0, width = 12, height = 6
+        properties = {
+          title   = "EC2 status checks", region = data.aws_region.current.region
+          metrics = [["AWS/EC2", "StatusCheckFailed", "InstanceId", var.instance_id]]
+          period  = 60, stat = "Maximum"
+        }
+      },
+      {
+        type = "log", x = 0, y = 6, width = 24, height = 6
+        properties = {
+          title = "Application errors and backup results", region = data.aws_region.current.region
+          query = "SOURCE '${local.log_group_name}' | fields @timestamp, @logStream, @message | filter @message like /ERROR|error|backup_uploaded|operation_failed/ | sort @timestamp desc | limit 50"
+          view  = "table"
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "application" {
   name              = local.log_group_name
   retention_in_days = var.log_retention_days
@@ -16,6 +50,8 @@ resource "aws_cloudwatch_log_group" "application" {
   })
 }
 
+# Non-sensitive operational metadata only; see docs/security.md for KMS tradeoff.
+#trivy:ignore:AWS-0095
 resource "aws_sns_topic" "alerts" {
   name = local.sns_topic_name
 

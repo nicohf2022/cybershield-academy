@@ -130,3 +130,13 @@ variable "tags" {
     error_message = "Tag keys and values cannot be empty."
   }
 }
+
+variable "user_data_base64" {
+  description = "Optional base64-encoded compressed startup script; exclusive with user_data."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.user_data == null || var.user_data_base64 == null
+    error_message = "Provide user_data or user_data_base64, not both."
+  }
+}

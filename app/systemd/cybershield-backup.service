@@ -11,3 +11,5 @@ UMask=0077
 EnvironmentFile=/etc/cybershield-backup.env
 ExecStart=/usr/bin/python3 /opt/cybershield/scripts/database.py --app-dir /opt/cybershield --project cybershield backup --s3-prefix ${BACKUP_S3_PREFIX}
 TimeoutStartSec=45min
+StandardOutput=append:/var/log/cybershield-backup.log
+StandardError=append:/var/log/cybershield-backup.log

@@ -1,0 +1,25 @@
+name: Require real deployment approval protection
+description: Fail closed unless the selected environment requires reviewers and only permits main.
+inputs:
+  environment:
+    description: Protected deployment environment
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/github-script@v7
+      env:
+        REVIEW_ENVIRONMENT: ${{ inputs.environment }}
+      with:
+        script: |
+          const params = {owner: context.repo.owner, repo: context.repo.repo,
+            environment_name: process.env.REVIEW_ENVIRONMENT};
+          const {data} = await github.request('GET /repos/{owner}/{repo}/environments/{environment_name}', params);
+          const reviewers = data.protection_rules?.find(r => r.type === 'required_reviewers');
+          if (!reviewers?.reviewers?.length || !data.deployment_branch_policy?.custom_branch_policies) {
+            throw new Error('Configure required reviewers and an explicit main-only deployment branch policy first.');
+          }
+          const {data: branches} = await github.request('GET /repos/{owner}/{repo}/environments/{environment_name}/deployment-branch-policies', params);
+          if (branches.branch_policies.length !== 1 || branches.branch_policies[0].name !== 'main' || branches.branch_policies[0].type !== 'branch') {
+            throw new Error('Deployment environment must allow only the main branch.');
+          }

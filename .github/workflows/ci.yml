@@ -1,25 +1,14 @@
 name: Terraform CI
-
 on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
-  validate:
-    name: Validate ${{ matrix.directory }}
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        directory: [infra/bootstrap, infra/envs/region-a, infra/envs/region-b]
-    defaults:
-      run:
-        working-directory: ${{ matrix.directory }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,11 +16,73 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.17.2
-      - name: Check formatting
+          terraform_wrapper: false
+      - name: Format all Terraform
         run: terraform fmt -check -recursive
-      - name: Initialize without remote state
-        run: terraform init -backend=false -input=false -lockfile=readonly
-      - name: Validate configuration
-        run: terraform validate -no-color
-      - name: Test configuration with mocked AWS resources
-        run: terraform test -no-color
+      - name: Install pinned, checksum-verified checks
+        run: bash scripts/install-check-tools.sh
+      - name: Lint Terraform
+        run: tflint --recursive --config "$PWD/.tflint.hcl"
+      - name: Scan infrastructure
+        run: trivy config --tf-vars infra/envs/region-a/region.tfvars --tf-vars infra/bootstrap/automation.tfvars.example --tf-vars infra/bootstrap/security-scan.tfvars.example --severity HIGH,CRITICAL --exit-code 1 infra
+      - name: Validate workflows
+        run: actionlint -shellcheck=""
+      - name: Validate and test both roots without AWS
+        run: |
+          for root in infra/bootstrap infra/envs/dr; do
+            terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$root" validate -no-color
+            terraform -chdir="$root" test -no-color
+          done
+      - name: Test backup and restore in disposable Docker projects
+        run: RUN_DOCKER_TESTS=1 python3 -m unittest discover -s app/scripts -p 'test_*.py' -v
+      - name: Test deployment safety checks
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+  plan:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        region: [region-a, region-b]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: plan-${{ matrix.region }}
+    concurrency:
+      group: terraform-${{ matrix.region }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Initialize existing state and plan
+        env:
+          REGION_KEY: ${{ matrix.region }}
+          TF_VAR_allowed_http_cidrs: ${{ vars.ALLOWED_HTTP_CIDRS }}
+          TF_VAR_workload_permissions_boundary_arn: ${{ vars.AWS_WORKLOAD_BOUNDARY_ARN }}
+        run: |
+          bash scripts/tf.sh "$REGION_KEY" init
+          bash scripts/tf.sh "$REGION_KEY" plan -out="$RUNNER_TEMP/pr.tfplan" > "$RUNNER_TEMP/plan.log"
+          bash scripts/tf.sh "$REGION_KEY" show -json "$RUNNER_TEMP/pr.tfplan" > "$RUNNER_TEMP/plan.json"
+          python3 scripts/plan_summary.py "$RUNNER_TEMP/plan.json" > "$RUNNER_TEMP/summary.md" || true
+      - name: Publish resource summary as PR comment
+        uses: actions/github-script@v7
+        env:
+          REGION_KEY: ${{ matrix.region }}
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync(process.env.RUNNER_TEMP + '/summary.md', 'utf8');
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, body: `Terraform ${process.env.REGION_KEY}\n\n${body.slice(0, 55000)}`});

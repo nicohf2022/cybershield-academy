@@ -1,0 +1,2 @@
+# Scanner-only opt-in: exercises role policies without deploying them.
+enable_workflow_roles = true

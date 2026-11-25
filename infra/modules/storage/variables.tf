@@ -49,3 +49,13 @@ variable "tags" {
     error_message = "Tag keys and values cannot be empty."
   }
 }
+
+variable "current_version_expiration_days" {
+  description = "Days before expiring current timestamped backups; null keeps them indefinitely."
+  type        = number
+  default     = null
+  validation {
+    condition     = var.current_version_expiration_days == null ? true : (var.current_version_expiration_days >= 2 && floor(var.current_version_expiration_days) == var.current_version_expiration_days)
+    error_message = "Use null or at least two whole days."
+  }
+}

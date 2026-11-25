@@ -7,6 +7,7 @@ resource "aws_instance" "app" {
   associate_public_ip_address = var.associate_public_ip_address
   monitoring                  = var.enable_detailed_monitoring
   user_data                   = var.user_data
+  user_data_base64            = var.user_data_base64
   user_data_replace_on_change = true
 
   metadata_options {
