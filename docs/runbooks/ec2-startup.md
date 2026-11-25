@@ -12,7 +12,9 @@ The host generates a random PostgreSQL password in `/opt/cybershield/.env`
 Root and Docker administrators can access container secrets. The app maps host
 port 80 to container port 8000; PostgreSQL has no published port. The app source
 and database schema are unchanged. Container logs rotate locally; CloudWatch
-ingestion and scheduled database backups are separate work.
+ingestion remains separate work. Startup now installs the database backup/restore
+script, takes an initial S3 backup and enables the hourly timer; see the
+[backup runbook](database-backup-restore.md). Files are gzip-compressed in user data.
 
 ## Before deployment
 
@@ -26,7 +28,7 @@ User data runs at first boot. The existing compute module replaces the instance
 when user data changes, including embedded application files. The root volume is
 deleted on termination: Docker persistence survives container/host restarts,
 but not instance replacement. Do not replace an instance with valuable data
-until verified backup/restore exists. The primary password is host-local;
+until a recent backup and its restoration have been verified. The primary password is host-local;
 recovery must use logical dumps and deliberately handle database ownership.
 
 ## Verify after an approved deployment

@@ -1,5 +1,8 @@
 # Aplicación mínima de CyberShield Academy
 
+Backups locales/S3, restauración y timer horario:
+[runbook de backups y restauración](../docs/runbooks/database-backup-restore.md).
+
 Aplicación web mínima desarrollada con Flask y PostgreSQL. Su propósito es comprobar el funcionamiento de la aplicación, la conexión con la base de datos y la persistencia de los registros antes de desplegar la solución en AWS.
 
 ## Arquitectura local

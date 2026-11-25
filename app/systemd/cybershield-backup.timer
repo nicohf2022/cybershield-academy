@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up CyberShield PostgreSQL hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=30
+Unit=cybershield-backup.service
+
+[Install]
+WantedBy=timers.target
