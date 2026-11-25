@@ -1,14 +1,15 @@
 # FinOps report and measurement method
 
-Status: budget and alerts verified; project-attributable billing evidence and
-calculator export still pending. Do not present the assignment's USD 1–5 example
-as a measured bill or assume free-tier/academic credit eligibility.
+Status: budget settings verified and primary compute calculator estimate
+exported. Project-attributable billing, workload-dependent estimates and inbox
+delivery evidence remain pending.
 
 ## Budget and operations
 
 The existing `CyberShield-Monthly-USD10` budget is USD 10/month, with actual-spend
-notifications at 50%, 80% and 100%. Confirm both team recipients and current
-credit eligibility in the account. Conditional bootstrap import lets Terraform
+notifications at 50%, 80% and 100%. On November 25, AWS listed two email
+subscribers at each threshold. Inbox receipt and current credit eligibility
+remain to be verified. Conditional bootstrap import lets Terraform
 adopt this budget after real recipient addresses are supplied privately and the
 plan is approved. It does not create a duplicate or impose an automatic cutoff.
 
@@ -21,9 +22,11 @@ for their configured period. Versioning is not a storage-cost cap.
 
 ## Estimate assumptions (reviewed 2026-11-25)
 
-For illustrative US East Linux t3.micro pricing, published rates are $0.0104/hour
-for EC2 and $0.005/hour per public IPv4. Twelve GiB gp3 at an assumed regional
-$0.08/GiB-month adds $0.96 for a full month. For 730 hours:
+The [AWS Pricing Calculator export](aws-primary-compute-estimate.csv) models
+one on-demand Linux `t3.micro` in N. Virginia at 100% utilization with 12 GiB
+of gp3 storage. It reports **USD 8.55/month** for EC2 and EBS. With one public
+IPv4 address at USD 0.005/hour, the base forecast is USD 12.20/month.
+For 730 hours:
 
 - EC2: `730 × 0.0104 = $7.592`.
 - IPv4: `730 × 0.005 = $3.65`.
@@ -51,17 +54,19 @@ AWS_PROFILE=cybershield python3 scripts/finops.py \
 
 Use an end date appropriate to available billing data; end is exclusive. Cost
 Explorer may require enablement/permissions and charges per API request. The
-export is explicitly account-wide because unrelated lab resources exist. Activate
-project cost-allocation tags and reconcile resource IDs/launch hours; historical
-uppercase tags and billing delay limit attribution. Export the billing console
+export is account-wide because unrelated lab resources exist. On November 25,
+Cost Explorer confirmed the `project` cost-allocation tag was active after the
+approved activation. Reconcile data for `project=CyberShieldAcademy` with resource
+IDs and launch hours as billing data becomes available. Historical uppercase
+tags and billing delay limit attribution. Export the billing console
 or calculator evidence and record the observation date. Do not label unrelated
 lab costs as CyberShield or commit sensitive billing exports by default.
 
 | Required evidence | Current status |
 |---|---|
-| Budget, thresholds and team recipients | Budget/thresholds verified; recipient evidence to collect |
+| Budget, thresholds and team recipients | Budget and two subscriptions per threshold verified; inbox receipt pending |
 | Session compute hours and actual attributable bill | Pending billing/resource reconciliation |
-| Production calculator estimate | Method and base calculation above; calculator export pending |
+| Production calculator estimate | EC2 and EBS CSV exported; IPv4 is calculated separately and workload-dependent charges remain pending |
 | Post-session compute/root disk removal | Workflow implemented; approved execution/evidence pending |
 | Backup/log retention | Declared in code; adoption apply pending |
 
@@ -81,3 +86,7 @@ Most CyberShield deployment happened on 2026-11-25 UTC and is outside that
 closed-date export; billing delay and credits must be reconciled. Re-export
 after usage is available and separate unrelated lab resources. The private raw
 export was kept under `/tmp`, not committed to the repository.
+
+A follow-up Cost Explorer query filtered to `project=CyberShieldAcademy`
+returned zero service groups for November 1–24 UTC. Project-attributed cost
+remains unavailable for that period.
