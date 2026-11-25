@@ -1,4 +1,4 @@
-# Remote Terraform state bootstrap
+# Remote Terraform state
 
 Trello: [Crear bootstrap del state remoto](https://trello.com/c/v5rMJJaj)
 
@@ -10,11 +10,30 @@ backend lets teammates use the same state. S3 versioning retains older copies;
 The lock is a temporary `.tflock` object, separate from `.terraform.lock.hcl`,
 which pins provider packages. No DynamoDB table is needed.
 
-Read-only inspection on 2026-11-19 found that
-`cybershield-tfstate-079754672968` already exists in `us-east-1`, is empty,
-has versioning enabled, blocks all public access and uses AES256 encryption.
-It was not tracked by the current bootstrap state. Explicit Terraform imports
-adopt the bucket and its three settings. Its existing lowercase tags are preserved.
+Read-only inspection found that `cybershield-tfstate-079754672968` already
+exists in `us-east-1`, has versioning enabled, blocks all public access and uses
+AES256 encryption. There are currently no objects under the `region-a/` and
+`region-b/` prefixes. This is expected before Terraform first persists each
+regional state. The bucket bootstrap state is managed separately from the
+regional roots and must only be operated from the machine that holds its
+canonical local state.
+
+## Current regional state status
+
+The Region A and Region B S3 backends are configured with independent object
+keys. Both roots have been initialized successfully with `-reconfigure` and
+their committed `backend.hcl` files, and both Terraform configurations validate.
+The Region A root defines the primary infrastructure stack. The Region B root
+currently contains its backend and provider configuration and will be completed
+as the recovery environment in a later step.
+
+This verifies the backend configuration, not the complete runtime behavior of
+two physical states. Neither regional `terraform.tfstate` object exists yet.
+`use_lockfile = true` is configured for both roots, but concurrent lock behavior
+has not been tested. The controlled lock test remains pending for the later card
+that validates `apply`, idempotence and `destroy`.
+
+The bucket's existing lowercase tags are preserved.
 `prevent_destroy = true` blocks Terraform deletion while the resource block
 remains present; `force_destroy = false` also prevents automatic object cleanup.
 This is not protection against deletion outside Terraform or removal of its code.
@@ -31,11 +50,14 @@ state for the OIDC provider and IAM role. Do not start bootstrap from an empty
 state on another machine.
 
 ```bash
-export AWS_PROFILE=cybershield
+export AWS_PROFILE=<your-aws-profile>
 aws sts get-caller-identity
 terraform -chdir=infra/bootstrap init -lockfile=readonly
 terraform -chdir=infra/bootstrap plan -out=remote-state.tfplan
 ```
+
+The profile used in the current local environment is `cybershield-dev`. Profile
+names are machine-specific and must not be stored in backend configuration.
 
 Inspect the plan and obtain explicit approval before applying:
 
@@ -59,24 +81,30 @@ The committed `backend.hcl` files use separate keys:
 | Region B | region-b/terraform.tfstate |
 
 Both backend regions are `us-east-1`, because that is the bucket's location.
-The application provider for Region B still uses `us-east-2`. Backend settings
-cannot reference Terraform variables, so non-secret bucket/key/region values
-are supplied via a small HCL file. Never add credentials to these files.
+The application provider for Region A uses `us-east-1`, while the application
+provider for Region B uses `us-east-2`. Backend settings cannot reference
+Terraform variables, so non-secret bucket/key/region values are supplied via a
+small HCL file. Never add credentials to these files.
 
-After the bucket adoption is approved and completed:
+Initialize or reconfigure each regional backend with a local AWS profile:
 
 ```bash
-terraform -chdir=infra/envs/region-a init -migrate-state -backend-config=backend.hcl
-terraform -chdir=infra/envs/region-b init -migrate-state -backend-config=backend.hcl
-terraform -chdir=infra/envs/region-a plan
-terraform -chdir=infra/envs/region-b plan
+export AWS_PROFILE=<your-aws-profile>
+terraform -chdir=infra/envs/region-a init -reconfigure -backend-config=backend.hcl
+terraform -chdir=infra/envs/region-b init -reconfigure -backend-config=backend.hcl
+terraform -chdir=infra/envs/region-a validate
+terraform -chdir=infra/envs/region-b validate
 ```
 
-Review any migration prompt before answering yes. If a root has no local state,
-initialization simply selects the backend; an S3 state object may not exist until
-Terraform first persists state. The regional roots currently define no resources.
-Do not run apply merely to create an empty state file. On a fresh checkout,
-normal `init -backend-config=backend.hcl` is sufficient.
+If a root has no local state, initialization simply selects the backend. Its S3
+`terraform.tfstate` object may not appear until Terraform persists state for the
+first time, normally during the first `apply`. Do not create an empty state file
+manually and do not run `apply` merely to make the object appear. On a fresh
+checkout, normal `init -backend-config=backend.hcl` is sufficient.
+
+The successful initialization and validation establish that each root targets
+its intended independent key. Full separation remains operationally unproven
+until both physical state objects exist and the controlled lock test succeeds.
 
 CI deliberately uses `init -backend=false`, so PR validation remains independent
 of AWS credentials and remote state access. The identity-only GitHub role still
@@ -84,8 +112,11 @@ has no S3 permissions; do not use it for backend initialization yet.
 
 ## 3. Move bootstrap state to S3 as a separate approved step
 
-Once adoption succeeds, securely back up the bootstrap state outside Git. The
-prepared `infra/bootstrap/backend.tf` contains:
+This regional-state workflow does not initialize or migrate bootstrap state.
+That process depends on canonical local state managed by another team member and
+must remain a separate, explicitly approved operation on the machine that owns
+that state. When its owner performs that future step, the prepared
+`infra/bootstrap/backend.tf` contains:
 
 ```hcl
 terraform {
@@ -115,10 +146,11 @@ DeleteObject is not required on the state file itself. Future CI roles should
 be scoped to their intended keys. Backend permissions do not grant permission
 to deploy AWS resources.
 
-Save the PR link, adoption plan/apply summary, successful migration output,
-and unchanged plan as evidence. The acceptance criteria are not fully verified
-until the approved imports, state migrations and a controlled concurrent-operation
-lock check have run. Never delete a lock object or force-unlock an active run.
+Save the PR link, initialization output and validation output as configuration
+evidence. The regional backends are configured and validated, but physical state
+separation is not fully verified until both states have been persisted and a
+controlled concurrent-operation lock check has run. Never delete a lock object
+or force-unlock an active run.
 
 The state bucket is intentionally in the primary region per the project plan.
 It is not replicated by this change. A complete regional failure can therefore
@@ -129,20 +161,25 @@ References:
 - [HashiCorp S3 backend and lock permissions](https://developer.hashicorp.com/terraform/language/backend/s3)
 - [S3 pricing](https://aws.amazon.com/s3/pricing/)
 
-## Controlled lock verification after bootstrap migration
+## Controlled regional lock verification after the first apply
+
+Run this only during the later `apply`, idempotence and `destroy` validation
+card, after the selected regional state exists. The Region A commands below are
+an example; repeat the controlled check for Region B with its own root and state
+key.
 
 In terminal 1, from the repository root:
 
 ```bash
-export AWS_PROFILE=cybershield
-terraform -chdir=infra/bootstrap console
+export AWS_PROFILE=<your-aws-profile>
+terraform -chdir=infra/envs/region-a console
 ```
 
 Leave the console open at its prompt. It holds the state lock. In terminal 2:
 
 ```bash
-export AWS_PROFILE=cybershield
-terraform -chdir=infra/bootstrap plan -lock-timeout=5s
+export AWS_PROFILE=<your-aws-profile>
+terraform -chdir=infra/envs/region-a plan -lock-timeout=5s
 ```
 
 Expect an error acquiring the state lock. Save that output as evidence, then
